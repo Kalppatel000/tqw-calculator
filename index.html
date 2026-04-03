@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0e1117">
+  <meta name="description" content="Solve at Source - SPM Impact Tab Calculator. Calculate FTE hours saved.">
+  <title>TQW Calculator</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+  <style>body { margin: 0; background: #0e1117; }</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const REDUCTION_GUIDELINES = {
+  "Product Enhancement": { caseVolume: "1% – 100%", effort: "N/A" },
+  "Problem/Defect": { caseVolume: "1% – 100%", effort: "N/A" },
+  "Training": { caseVolume: "N/A", effort: "5% – 15%" },
+  "Content (KB, KE, Documentation)": { caseVolume: "5% – 10%", effort: "N/A" },
+  "Community Post": { caseVolume: "10% – 15%", effort: "N/A" },
+  "Process Changes (Support/Dev)": { caseVolume: "N/A", effort: "5% – 15%" },
+};
+
+function AnimNum({ value, decimals = 0 }) {
+  const [d, setD] = useState(0);
+  const r = useRef(null);
+  useEffect(() => {
+    let s = d, e = value;
+    if (s === e) return;
+    const t0 = performance.now();
+    function tick(now) {
+      const p = Math.min((now - t0) / 380, 1);
+      setD(s + (e - s) * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) r.current = requestAnimationFrame(tick);
+    }
+    r.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(r.current);
+  }, [value]);
+  return <span>{decimals > 0 ? d.toFixed(decimals) : Math.round(d).toLocaleString()}</span>;
+}
+
+function InputField({ label, hint, value, onChange, min, max, step, unit }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label style={{
+        display: "block", fontSize: 11, fontFamily: "'DM Mono', monospace",
+        textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--label)", marginBottom: 6,
+      }}>{label}</label>
+      <div style={{ position: "relative" }}>
+        <input type="number" value={value}
+          onChange={e => onChange(parseFloat(e.target.value) || 0)}
+          min={min} max={max} step={step}
+          style={{
+            width: "100%", padding: "12px 16px", paddingRight: unit ? 50 : 16,
+            background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 10,
+            color: "var(--text)", fontSize: 16, fontFamily: "'DM Mono', monospace",
+            outline: "none", transition: "border-color 0.2s, box-shadow 0.2s", boxSizing: "border-box",
+          }}
+          onFocus={e => { e.target.style.borderColor = "var(--accent)"; e.target.style.boxShadow = "0 0 0 3px var(--accent-glow)"; }}
+          onBlur={e => { e.target.style.borderColor = "var(--border)"; e.target.style.boxShadow = "none"; }}
+        />
+        {unit && <span style={{
+          position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)",
+          fontSize: 13, color: "var(--muted)", fontFamily: "'DM Mono', monospace",
+        }}>{unit}</span>}
+      </div>
+      {hint && <span style={{ display: "block", marginTop: 5, fontSize: 11, color: "var(--muted)", fontFamily: "'DM Sans', sans-serif" }}>{hint}</span>}
+    </div>
+  );
+}
+
+function StepCard({ step, title, children, result, resultLabel, resultDecimals, resultColor }) {
+  const clr = resultColor || "var(--accent)";
+  return (
+    <div style={{
+      background: "var(--card-bg)", border: "1px solid var(--border)",
+      borderRadius: 14, overflow: "hidden", marginBottom: 16,
+    }}>
+      <div style={{
+        padding: "12px 20px", borderBottom: "1px solid var(--border)",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <span style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 26, height: 26, borderRadius: 7, background: "var(--accent)",
+          color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: "'DM Mono', monospace",
+          flexShrink: 0,
+        }}>{step}</span>
+        <span style={{
+          fontSize: 14, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600,
+          color: "var(--text)", letterSpacing: "0.01em",
+        }}>{title}</span>
+      </div>
+      <div style={{ padding: "20px 20px 8px" }}>{children}</div>
+      {result !== undefined && (
+        <div style={{
+          margin: "0 20px 20px", padding: "14px 16px",
+          background: `color-mix(in srgb, ${clr} 8%, transparent)`,
+          border: `1px solid color-mix(in srgb, ${clr} 20%, transparent)`,
+          borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace", color: clr, fontWeight: 500 }}>{resultLabel}</span>
+          <span style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", color: clr }}>
+            <AnimNum value={result} decimals={resultDecimals || 0} />
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Tab({ active, label, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: "10px 24px", background: active ? "var(--accent)" : "transparent",
+      color: active ? "#fff" : "var(--muted)",
+      border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+      borderRadius: 8, cursor: "pointer", fontSize: 13, fontFamily: "'DM Mono', monospace",
+      fontWeight: active ? 600 : 400, transition: "all 0.2s", letterSpacing: "0.02em",
+    }}>{label}</button>
+  );
+}
+
+function GuidelinesTable() {
+  return (
+    <div style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", marginTop: 24 }}>
+      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 12, fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)" }}>
+        Estimated % Reduction Guidelines
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border)" }}>
+            {["Action Type", "Case Volume", "Effort (TQW)"].map(h => (
+              <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", fontWeight: 500 }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(REDUCTION_GUIDELINES).map(([action, vals], i) => (
+            <tr key={action} style={{ borderBottom: i < 5 ? "1px solid var(--border)" : "none" }}>
+              <td style={{ padding: "10px 16px", color: "var(--text)" }}>{action}</td>
+              <td style={{ padding: "10px 16px", color: vals.caseVolume === "N/A" ? "var(--muted)" : "var(--text)" }}>{vals.caseVolume}</td>
+              <td style={{ padding: "10px 16px", color: vals.effort === "N/A" ? "var(--muted)" : "var(--text)" }}>{vals.effort}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TQWCalculator() {
+  const [scenario, setScenario] = useState("case-volume");
+  const [casesPerMonth, setCasesPerMonth] = useState(32);
+  const [casesPerYear, setCasesPerYear] = useState(384);
+  const [yearMode, setYearMode] = useState(false);
+  const [tqwPerCase, setTqwPerCase] = useState(30);
+  const [reductionPct, setReductionPct] = useState(90);
+  const [showGuide, setShowGuide] = useState(false);
+
+  const effectiveCasesPerYear = yearMode ? casesPerYear : Math.round(casesPerMonth * 12);
+
+  const unitsPerYr = scenario === "case-volume"
+    ? effectiveCasesPerYear * (reductionPct / 100)
+    : effectiveCasesPerYear;
+
+  const minsPerUnit = scenario === "case-volume"
+    ? (tqwPerCase / 6) * 60
+    : ((tqwPerCase / 6) * (reductionPct / 100)) * 60;
+
+  const fteHrs = (unitsPerYr * minsPerUnit) / 60;
+  const casesAvoided = fteHrs * (372 / 1560);
+
+  return (
+    <div style={{
+      "--bg": "#0e1117", "--card-bg": "#161b22", "--input-bg": "#1c2129",
+      "--border": "#2a313b", "--text": "#e6edf3", "--muted": "#7d8590", "--label": "#8b949e",
+      "--accent": "#2ea043", "--accent-glow": "rgba(46,160,67,0.15)", "--accent-surface": "rgba(46,160,67,0.08)",
+      minHeight: "100vh", background: "var(--bg)", color: "var(--text)",
+      fontFamily: "'DM Sans', sans-serif", padding: "32px 16px",
+    }}>
+      <div style={{ maxWidth: 600, margin: "0 auto" }}>
+
+        <div style={{ marginBottom: 28 }}>
+          <div style={{
+            display: "inline-block", padding: "4px 10px", background: "var(--accent-surface)",
+            border: "1px solid var(--accent)", borderRadius: 6, fontSize: 10,
+            fontFamily: "'DM Mono', monospace", textTransform: "uppercase",
+            letterSpacing: "0.12em", color: "var(--accent)", marginBottom: 12,
+          }}>SRR + Delivery Solve at Source Initiative</div>
+          <h1 style={{ fontSize: 26, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, margin: "8px 0 6px", lineHeight: 1.2 }}>
+            Solve at Source - SPM Impact Tab Calculator
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
+            Populate the Impact tab in an actionable Supportability project (SPM record).
+            This provides the approximate number of FTE HRs that leadership uses to gauge the impact of a project recommendation.
+          </p>
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--label)", marginBottom: 10 }}>
+            Reduction Type
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <Tab active={scenario === "case-volume"} label="Case Volume Reduction"
+              onClick={() => { setScenario("case-volume"); setReductionPct(90); setCasesPerMonth(32); setTqwPerCase(30); }} />
+            <Tab active={scenario === "effort"} label="Effort (TQW) Reduction"
+              onClick={() => { setScenario("effort"); setReductionPct(15); setCasesPerMonth(38); setCasesPerYear(450); setTqwPerCase(30); }} />
+          </div>
+          <div style={{
+            background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 10,
+            padding: "12px 16px", fontSize: 12, color: "var(--muted)", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6,
+          }}>
+            {scenario === "case-volume"
+              ? "This can result in a reduction in case volume. Use when a product change, defect fix, or content improvement will reduce the number of incoming cases."
+              : "This can result in a reduction in effort by Support or Development. Use when training or process changes will reduce the effort (time) spent per case."}
+          </div>
+        </div>
+
+        <StepCard step="1" title="Units per/YR"
+          result={unitsPerYr} resultLabel="Units per/YR" resultColor="var(--accent)">
+          <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, marginBottom: 16 }}>
+            {scenario === "case-volume"
+              ? "= (Cases per year) × (Estimated % Reduction)"
+              : "= Cases per year"}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+            <span style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--label)" }}>Case Volume Input</span>
+            <button onClick={() => setYearMode(!yearMode)} style={{
+              padding: "3px 8px", background: "var(--input-bg)", border: "1px solid var(--border)",
+              borderRadius: 4, color: "var(--accent)", fontSize: 10, fontFamily: "'DM Mono', monospace", cursor: "pointer",
+            }}>{yearMode ? "Switch to Monthly" : "Switch to Yearly"}</button>
+          </div>
+          {yearMode ? (
+            <InputField label="Cases per Year" value={casesPerYear} onChange={setCasesPerYear}
+              min={0} step={1} hint="Total annual case volume for this pattern" />
+          ) : (
+            <InputField label="Cases per Month" value={casesPerMonth} onChange={setCasesPerMonth}
+              min={0} step={1} hint={`≈ ${effectiveCasesPerYear.toLocaleString()} cases/year`} />
+          )}
+          {scenario === "case-volume" && (
+            <>
+              <InputField label="Estimated % Reduction" value={reductionPct}
+                onChange={v => setReductionPct(Math.min(100, Math.max(0, v)))}
+                min={0} max={100} step={1} unit="%"
+                hint="Potential % reduction — be conservative (under promise, over deliver). See % Reduction Guidelines by Action Type below." />
+              <input type="range" min={0} max={100} value={reductionPct}
+                onChange={e => setReductionPct(parseFloat(e.target.value))}
+                style={{ width: "100%", accentColor: "var(--accent)", marginTop: -8 }} />
+            </>
+          )}
+          <div style={{
+            padding: "10px 14px", background: "var(--input-bg)", borderRadius: 8,
+            fontSize: 13, fontFamily: "'DM Mono', monospace", color: "var(--text)", marginBottom: 8,
+          }}>
+            {scenario === "case-volume"
+              ? <>{effectiveCasesPerYear.toLocaleString()} × {reductionPct}% = <strong>{Math.round(unitsPerYr).toLocaleString()}</strong></>
+              : <>Cases per year = <strong>{effectiveCasesPerYear.toLocaleString()}</strong></>}
+          </div>
+        </StepCard>
+
+        <StepCard step="2" title="Minutes per Unit"
+          result={minsPerUnit} resultLabel="Minutes per Unit" resultDecimals={1} resultColor="#4a9eff">
+          <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, marginBottom: 16 }}>
+            {scenario === "case-volume"
+              ? "= ((TQW per Case) / 6) × 60 minutes"
+              : "= (((TQW per Case) / 6) × (Estimated % Reduction)) × 60 minutes"}
+          </div>
+          <InputField label="Average TQW per Case" value={tqwPerCase} onChange={setTqwPerCase}
+            min={0} step={0.5}
+            hint={<>Find your relevant taxonomy in the <a href="https://app.powerbi.com/groups/me/reports/908012bc-67be-4157-9ada-26eafe6344bd/9868cf11cfb25a30c068?experience=power-bi" target="_blank" rel="noopener noreferrer" style={{ color: "#4a9eff", textDecoration: "underline" }}>Cost to Support Dashboard</a> and use the value from the <strong style={{ color: "var(--text)" }}>TQW per Case</strong> column. TQW of 6 = 1 hour of work (BPM standard).</>} />
+          {scenario === "effort" && (
+            <>
+              <InputField label="Estimated % Reduction" value={reductionPct}
+                onChange={v => setReductionPct(Math.min(100, Math.max(0, v)))}
+                min={0} max={100} step={1} unit="%"
+                hint="Effort reduction — be conservative (under promise, over deliver). See % Reduction Guidelines by Action Type below." />
+              <input type="range" min={0} max={100} value={reductionPct}
+                onChange={e => setReductionPct(parseFloat(e.target.value))}
+                style={{ width: "100%", accentColor: "#4a9eff", marginTop: -8 }} />
+            </>
+          )}
+          <div style={{
+            padding: "10px 14px", background: "var(--input-bg)", borderRadius: 8,
+            fontSize: 13, fontFamily: "'DM Mono', monospace", color: "var(--text)", marginBottom: 12,
+          }}>
+            {scenario === "case-volume"
+              ? <>({tqwPerCase} ÷ 6) × 60 = <strong>{minsPerUnit.toFixed(1)}</strong></>
+              : <>(({tqwPerCase} ÷ 6) × {reductionPct}%) × 60 = <strong>{minsPerUnit.toFixed(1)}</strong></>}
+          </div>
+          <div style={{
+            fontSize: 11, color: "var(--muted)", fontFamily: "'DM Sans', sans-serif",
+            padding: "8px 14px", background: "var(--input-bg)", borderRadius: 8, lineHeight: 1.5,
+          }}>
+            **6 = On average, a TSE takes 1 hour to make 6 entries in a case. Pre-determined by the Business Process Management team.
+          </div>
+        </StepCard>
+
+        <StepCard step="3" title="Populate the Impact Tab of the SPM Record">
+          <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.8, marginBottom: 16 }}>
+            Add the values from Step 1 and Step 2 into the Impact tab of the SPM record.
+            FTE HRs will auto-populate after both fields are saved.
+          </div>
+          <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "var(--text)" }}>Units Per/YR</span>
+              <span style={{ padding: "6px 16px", background: "var(--input-bg)", borderRadius: 6, fontSize: 15, fontFamily: "'DM Mono', monospace", color: "var(--accent)", fontWeight: 600, minWidth: 80, textAlign: "right" }}>
+                <AnimNum value={unitsPerYr} />
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "var(--text)" }}>Minutes per Unit</span>
+              <span style={{ padding: "6px 16px", background: "var(--input-bg)", borderRadius: 6, fontSize: 15, fontFamily: "'DM Mono', monospace", color: "#4a9eff", fontWeight: 600, minWidth: 80, textAlign: "right" }}>
+                <AnimNum value={minsPerUnit} decimals={1} />
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "rgba(46,160,67,0.06)" }}>
+              <span style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "var(--accent)", fontWeight: 600 }}>FTE HRs</span>
+              <span style={{
+                padding: "6px 16px", background: "rgba(46,160,67,0.12)", borderRadius: 6,
+                border: "1px solid rgba(46,160,67,0.25)",
+                fontSize: 18, fontFamily: "'DM Mono', monospace", color: "var(--accent)", fontWeight: 700, minWidth: 80, textAlign: "right",
+              }}>
+                <AnimNum value={fteHrs} decimals={2} />
+              </span>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.7 }}>
+            a. Add the value for Units Per/YR in the appropriate field.<br />
+            b. Add the value for Minutes per Unit into the appropriate field.<br />
+            c. The FTE HRs will automatically populate after both fields are populated.<br />
+            d. Save the record.
+          </div>
+        </StepCard>
+
+        <div style={{
+          background: "var(--card-bg)", border: "1px solid rgba(167,139,250,0.25)",
+          borderRadius: 14, overflow: "hidden", marginBottom: 16,
+        }}>
+          <div style={{
+            padding: "12px 20px", borderBottom: "1px solid rgba(167,139,250,0.15)",
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <span style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 7, background: "#a78bfa",
+              color: "#fff", fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace",
+            }}>→</span>
+            <span style={{ fontSize: 14, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, color: "var(--text)" }}>
+              FTE Hours to Cases Conversion
+            </span>
+          </div>
+          <div style={{ padding: 20 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, marginBottom: 16 }}>
+              Projects currently capture impact in FTE hours committed to roadmap.
+              Convert to cases using: <strong style={{ color: "#a78bfa" }}>1,560 hours = 1 TSE = 372 cases</strong>
+            </div>
+            <div style={{
+              padding: "10px 14px", background: "var(--input-bg)", borderRadius: 8,
+              fontSize: 13, fontFamily: "'DM Mono', monospace", color: "var(--text)", marginBottom: 16,
+            }}>
+              {fteHrs.toFixed(2)} hrs × (372 ÷ 1,560) = <strong style={{ color: "#a78bfa" }}>{Math.round(casesAvoided).toLocaleString()}</strong> cases
+            </div>
+            <div style={{
+              padding: "14px 16px", background: "rgba(167,139,250,0.08)",
+              border: "1px solid rgba(167,139,250,0.2)",
+              borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}>
+              <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace", color: "#a78bfa", fontWeight: 500 }}>Cases Avoided</span>
+              <span style={{ fontSize: 28, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", color: "#a78bfa" }}>
+                <AnimNum value={casesAvoided} />
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <button onClick={() => setShowGuide(!showGuide)} style={{
+          width: "100%", padding: "12px 16px", background: "var(--card-bg)",
+          border: "1px solid var(--border)", borderRadius: 10, color: "var(--muted)",
+          fontSize: 12, fontFamily: "'DM Mono', monospace", cursor: "pointer",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <span>% Reduction Guidelines by Action Type</span>
+          <span style={{ transform: showGuide ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}>▼</span>
+        </button>
+        {showGuide && <GuidelinesTable />}
+
+        <div style={{
+          marginTop: 32, paddingTop: 20, borderTop: "1px solid var(--border)",
+          fontSize: 11, color: "var(--muted)", fontFamily: "'DM Mono', monospace",
+          textAlign: "center", lineHeight: 1.6,
+        }}>
+          SRR + Delivery Solve at Source Initiative · KB0010453 · TQW ÷ 6 = 1 hr (BPM) · 1,560 hrs = 1 TSE = 372 cases
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<TQWCalculator />);
+  </script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
